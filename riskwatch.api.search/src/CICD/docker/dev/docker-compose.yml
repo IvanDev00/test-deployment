@@ -1,16 +1,106 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  riskwatch.api.search:
-    image: riskwatch.api.search:latest
-    container_name: riskwatch.api.search
+  riskwatch-search-api:
+    build:
+      context: ../..
+      dockerfile: .
+    image: riskwatch-search-api:latest
+    container_name: riskwatch-search-api
     ports:
       - "8081:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - Redis=172.17.0.4:6379
+      - REDIS_CONNECTION_STRING=172.17.0.3:6379
+      - ELK_Con=http://localhost:9200
       - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - MYSQL_CONNECTION_STRING=server=127.0.01;port=3306;persistsecurityinfo=True;database=riskwatch_dev_admin;username=root;password=Password_root;SslMode=none;AllowPublicKeyRetrieval=true;
       - KEYCLOAK_URL=https://dev.ppspepp.com/auth/realms/Development
+      - XML_COMMENTS_PATH=Common/Docs/Fea/publickey.xml
     volumes:
-      - "D:/Desktop/Projects/api-boilerplate/src/riskwatch.api.search/Common/Docs/Fea/publickey.xml:/app/Common/Docs/Fea/publickey.xml"
+      - D:/iahamid/Documents/Gitlab/test-deployment/riskwatch.api.search/src/riskwatch.api.search/Common/Docs/Fea/:/app/Common/Docs/Fea
     restart: unless-stopped
+
+  elasticsearch1:
+    container_name: elasticsearch1
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
+    environment:
+      - node.name=es01
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=elasticsearch2,elasticsearch3
+      - cluster.initial_master_nodes=es01,es02,es03
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "bootstrap.memory_lock=false" # Set this to false to disable memory locking
+      - "xpack.security.enabled=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch-data1:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - elastic
+
+  elasticsearch2:
+    container_name: elasticsearch2
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
+    environment:
+      - node.name=es02
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=elasticsearch1,elasticsearch3
+      - cluster.initial_master_nodes=es01,es02,es03
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "bootstrap.memory_lock=false" # Set this to false to disable memory locking
+      - "xpack.security.enabled=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch-data2:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+
+  elasticsearch3:
+    container_name: elasticsearch3
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.1
+    environment:
+      - node.name=es03
+      - cluster.name=es-cluster
+      - discovery.seed_hosts=elasticsearch1,elasticsearch2
+      - cluster.initial_master_nodes=es01,es02,es03
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "bootstrap.memory_lock=false" # Set this to false to disable memory locking
+      - "xpack.security.enabled=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch-data3:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:8.12.1
+    depends_on:
+      - elasticsearch1
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch1:9200
+      - ELASTICSEARCH_HOSTS=http://elasticsearch1:9200
+    networks:
+      - elastic
+
+networks:
+  elastic:
+    driver: bridge
+
+volumes:
+  elasticsearch-data1:
+  elasticsearch-data2:
+  elasticsearch-data3:

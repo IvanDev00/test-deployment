@@ -36,7 +36,7 @@ namespace APIBoilerplate.Common
                 .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(elasticsearchUri)
                 {
                     AutoRegisterTemplate = true,
-                    IndexFormat = "riskwatch-search-v4",
+                    IndexFormat = "riskwatch-search-logs-{0:yyyy.MM.dd}",
                     MinimumLogEventLevel = LogEventLevel.Debug,
                     ModifyConnectionSettings = conn => conn.BasicAuthentication(username, password)
                                                       .ServerCertificateValidationCallback((sender, certificate, chain, sslPolicyErrors) => true),

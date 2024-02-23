@@ -16,6 +16,10 @@ public class ElasticSearchService : IElasticSearchService
     {
         var elasticSearchIndexName = "riskwatch-search-v5";
         var createIndexResponse = await _elasticClient.Indices.CreateAsync(elasticSearchIndexName, c => c
+            .Settings(s => s
+                    .NumberOfShards(3)
+                    .NumberOfReplicas(2)
+            )
             .Map<SearchResultDto>(m => m
                 .AutoMap()
                 .Properties(props => props
@@ -29,14 +33,17 @@ public class ElasticSearchService : IElasticSearchService
 
         if (!createIndexResponse.IsValid)
         {
+            Console.WriteLine($"Failed to create index. Error: {createIndexResponse.OriginalException.Message}");
             return false;
         }
+        Console.WriteLine("Index created successfully");
         return true;
     }
 
     public async Task<bool> IndexDataExistAsync(string indexName)
     {
         var response = await _elasticClient.Indices.ExistsAsync(indexName);
+        Console.WriteLine(response.Exists);
         return response.Exists;
     }
 
