@@ -1,0 +1,23 @@
+# FROM microsoft/dotnet:sdk AS build-env REMOVED: Upgraded to .NET Core 3.1
+FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build-env
+
+ARG BUILD
+
+WORKDIR /app
+
+COPY ./src ./
+
+RUN dotnet restore "riskwatch.api.search/riskwatch.api.search.csproj" 
+RUN dotnet publish "riskwatch.api.search/riskwatch.api.search.csproj" -c Dev -o out
+
+# build runtime image
+# FROM microsoft/dotnet:aspnetcore-runtime REMOVED: Upgraded to .NET Core 3.1
+#FROM mcr.microsoft.com/dotnet/core/aspnet:3.1
+FROM mcr.microsoft.com/dotnet/aspnet:6.0
+
+WORKDIR /app
+COPY --from=build-env /app/out ./
+
+
+
+ENTRYPOINT ["dotnet", "riskwatch.api.search.dll"]

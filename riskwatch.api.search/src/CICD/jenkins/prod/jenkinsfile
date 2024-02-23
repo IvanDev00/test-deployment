@@ -1,0 +1,251 @@
+//Dev Jenkinsfile
+def VERSION
+def DOCKER_IMAGE_NAME
+def DOCKER_IMAGE_LATEST
+pipeline {
+    agent any
+    options {
+        gitLabConnection('gitlab')
+        gitlabBuilds(builds: ['test','build', 'push', 'deploy-primary, deploy-secondary'])
+    }
+    environment {
+        //NAME will be used as container name, include .dev(if deployment for dev) or .test(if deployment for test/mdtc). Sample: cas.api.dev or cas.api.test
+        NAME = ''
+        //Port exposed in the host *(Will be provided by Systems Administrator)
+        PORT = ''
+        //Port exposed on the container
+        EXPOSED_PORT = ''
+        //Build Version (Git Tag)
+        BUILD = ''
+        //Test Path (if any)
+        UNIT_TEST_PATH = ''
+        //Docker File Path
+        DOCKER_FILE_PATH = './docker/dev/dockerfile'
+        //...Add other environment variables you need after this line
+
+        DATABASE = credentials('dev_appname_connection_string') //Create new database connection string variable if multiple databases are used
+        //ex: DATABASE_APP1 = credentials('dev_appname2_connection_string')
+
+        // Docker Network (if any)
+        DOCKER_NETWORK = ' '
+                         //'--net <NETWORK NAME>'
+
+        // Docker Volume (if any)    
+        DOCKER_VOL = ' '
+                     //Volume for Keycloak Public Key
+                     //'-v "/home/system/volumes/public-key.xml":"/etc/public-key.xml" ' + 
+                     //Volume for Logs
+                     //'-v "/home/system/volumes/log/<API/APP NAME>":"<container logs directory>" '
+
+        // Docker Environment (if any)
+        DOCKER_ENV = '-e ASPNETCORE_ENVIRONMENT="Development" ' +
+                     '-e DATABASE_CONNECTION="$DATABASE" ' //+
+                     '-e DATABASE_CONNECTION_APP1="$DATABASE_APP1" '
+                    // '-e JWT_ISSUER_KEYCLOAK="https://dev.ppspepp.com/auth/realms/Development" ' +
+                    // '-e JWT_ISSUER="apim-idp" ' +
+                    //  '-e JWT_PUBLIC_KEY_DEV="public-keycloak.xml" ' +
+                    //  '-e MYSQL_CONNECTION_STRING="server=10.217.129.41;port=3309;persistsecurityinfo=True;database=agent_id_value_map;username=PD2036D;password=8maYIEGD53^8;SslMode=none;" '
+                     //" -e DATABASE_CONNECTION='$DATABASE'" +
+                     //' -e KC_PUBLICKEY_PATH="/etc/public-key.xml"'                      
+        
+        //-----------------------------------DO NOT TOUCH---------------------------------------\\
+        DEV_SSH_USER = credentials('dev-ssh-user')
+        DEVUAT_DOCKER_REGISTRY = credentials('devuat-docker-registry')
+        DEV_DOCKER_SERVER_PRIMARY = credentials('dev-docker-server-primary')
+        DEV_DOCKER_SERVER_SECONDARY = credentials('dev-docker-server-secondary')
+        DEVUAT_DOCKER_REGISTRY_URL = credentials('devuat-docker-registry-url')
+        //SSH URLs
+        DEV_DOCKER_REGISTRY_URL = 'ssh://$DEV_SSH_USER@$DEVUAT_DOCKER_REGISTRY'
+        DEV_DOCKER_SERVER_PRIMARY_URL = 'ssh://$DEV_SSH_USER@$DEV_DOCKER_SERVER_PRIMARY'
+        DEV_DOCKER_SERVER_SECONDARY_URL = 'ssh://$DEV_SSH_USER@$DEV_DOCKER_SERVER_SECONDARY'
+        //-----------------------------------DO NOT TOUCH---------------------------------------\\
+    }
+
+     post{
+        always {
+            cleanWs()
+        }
+        success{
+            updateGitlabCommitStatus(name: 'build', state: 'success')
+            updateGitlabCommitStatus(name: 'push', state: 'success')
+            updateGitlabCommitStatus(name: 'deploy', state: 'success')
+            updateGitlabCommitStatus(name: 'test', state: 'success')
+        }
+        failure{
+            updateGitlabCommitStatus(name: 'build', state: 'failed')
+            updateGitlabCommitStatus(name: 'push', state: 'failed')
+            updateGitlabCommitStatus(name: 'deploy', state: 'failed')
+            updateGitlabCommitStatus(name: 'test', state: 'failed')
+        }
+        unstable{
+            updateGitlabCommitStatus(name: 'build', state: 'failed')
+            updateGitlabCommitStatus(name: 'push', state: 'failed')
+            updateGitlabCommitStatus(name: 'deploy', state: 'failed')
+            updateGitlabCommitStatus(name: 'test', state: 'failed')
+        }
+        unsuccessful{
+            updateGitlabCommitStatus(name: 'build', state: 'failed')
+            updateGitlabCommitStatus(name: 'push', state: 'failed')
+            updateGitlabCommitStatus(name: 'deploy', state: 'failed')
+            updateGitlabCommitStatus(name: 'test', state: 'failed')
+        }
+        aborted{
+            updateGitlabCommitStatus(name: 'build', state: 'canceled')
+            updateGitlabCommitStatus(name: 'push', state: 'canceled')
+            updateGitlabCommitStatus(name: 'deploy', state: 'canceled')
+            updateGitlabCommitStatus(name: 'test', state: 'canceled')
+        }
+    }
+    stages {
+        stage("Test") {
+            steps{
+                //Insert test script here----------
+                //sh "dotnet test --configuration ${env.BUILD} ${env.UNIT_TEST_PATH}"
+                //---------------------------------
+
+                updateGitlabCommitStatus(name: 'test', state: 'success')
+            }
+        }
+        stage("Preparation") {
+            steps{
+                script{
+                    //VERSION = sh(returnStdout: true, script: "git tag --sort version:refname | tail -1").toString().trim()
+                    VERSION = "${BUILD}"
+                    DOCKER_IMAGE_NAME = "${DEVUAT_DOCKER_REGISTRY_URL}/${NAME}:${VERSION}"
+                    DOCKER_IMAGE_LATEST = "${DEVUAT_DOCKER_REGISTRY_URL}/${NAME}:latest"
+                } 
+            }
+        }
+        stage('Build: Docker Image') {
+            steps {
+                script{
+                    updateGitlabCommitStatus(name: 'build', state: 'pending')
+
+                    sh "docker build -f ${DOCKER_FILE_PATH} --build-arg PPS_NUGET=${env.PPS_NUGET_SOURCE} -t ${DOCKER_IMAGE_LATEST} -t ${DOCKER_IMAGE_NAME} ."
+
+                    updateGitlabCommitStatus(name: 'build', state: 'success')
+                }
+            }
+        }
+        stage('Push: Docker Image') {
+            steps {
+                script{
+                    updateGitlabCommitStatus(name: 'push', state: 'pending')
+
+                    echo 'Pushing to Dev&UAT Registry'
+                    //Push to Dev&UAT Registry
+                    try{
+                        sh "docker -H ${env.DEV_DOCKER_REGISTRY_URL} rmi -f ${DOCKER_IMAGE_NAME}"
+                    }
+                    catch(Exception ex){
+                        echo "Error encountered in removing image ${DOCKER_IMAGE_NAME} in Docker Registry. ${DOCKER_IMAGE_NAME} might not exist yet."
+                    }
+                    try{
+                        sh "docker -H ${env.DEV_DOCKER_REGISTRY_URL} rmi -f ${DOCKER_IMAGE_LATEST}"
+                    }
+                    catch(Exception ex){
+                        echo "Error encountered in removing image ${DOCKER_IMAGE_LATEST} in Docker Registry. ${DOCKER_IMAGE_LATEST} might not exist yet."
+                    }
+
+                    //Push to Dev&UAT registry
+                    sh "docker push ${DOCKER_IMAGE_NAME}"
+
+                    //Remove image in local Jenkins storage to prevent shortage in storage
+                    try{
+                        sh "docker rmi ${DOCKER_IMAGE_NAME}"
+                    }
+                    catch(Exception ex){
+                        echo "Not found."
+                    }
+                    try{
+                        sh "docker rmi ${DOCKER_IMAGE_LATEST}"
+                    }
+                    catch(Exception ex){
+                        echo "Not found"
+                    }                    
+                    try{
+                        sh "docker -H ${env.DEV_DOCKER_SERVER_PRIMARY_URL} rmi -f ${DOCKER_IMAGE_NAME}"
+                        sh "docker -H ${env.DEV_DOCKER_SERVER_SECONDARY_URL} rmi -f ${DOCKER_IMAGE_NAME}"
+                    }
+                    catch(Exception ex){
+                        echo "Image does not exist."
+                    }
+
+                    updateGitlabCommitStatus(name: 'push', state: 'success')
+                }
+            }
+        }
+        stage('Deploy: Development Primary') {
+            steps {
+                updateGitlabCommitStatus(name: 'deploy', state: 'pending')
+                script{
+                    //Try to stop the existing container to avoid errors on deployment(docker run)
+                    //Try-Catch block is needed to avoid aborting the process on error
+                    try{
+                        sh "docker -H ${env.DEV_DOCKER_SERVER_PRIMARY_URL} stop ${env.NAME}"
+                    }
+                    catch(Exception ex){
+                        echo "Error encountered on container verification for ${env.NAME}. Container '${env.NAME}' might not exists yet or has been removed."
+                    }
+
+                    try{
+                        sh "docker -H ${env.DEV_DOCKER_SERVER_PRIMARY_URL} rm ${env.NAME}"
+                    }
+                    catch(Exception ex){
+                        echo "Error encountered on container verification for ${env.NAME}. Container '${env.NAME}' might not exists yet or has been removed."
+                    }
+
+                    sh "docker -H ${env.DEV_DOCKER_SERVER_PRIMARY_URL} run -d --restart=always --name ${env.NAME} -p ${env.PORT}:${env.EXPOSED_PORT} ${env.DOCKER_VOL} ${env.DOCKER_NETWORK} ${env.DOCKER_ENV} ${DOCKER_IMAGE_NAME}"
+                    currentBuild.result = 'SUCCESS'
+                }
+                
+                updateGitlabCommitStatus(name: 'deploy', state: 'success')
+            }
+        }
+        stage('Deploy: Development Secondary') {
+            steps {
+                updateGitlabCommitStatus(name: 'deploy', state: 'pending')
+                    script{
+                    //Try to stop the existing container to avoid errors on deployment(docker run)
+                    //Try-Catch block is needed to avoid aborting the process on error
+                    try{
+                        sh "docker -H ${env.DEV_DOCKER_SERVER_SECONDARY_URL} stop ${env.NAME}"
+                    }
+                    catch(Exception ex){
+                        echo "Error encountered on container verification for ${env.NAME}. Container '${env.NAME}' might not exists yet or has been removed."
+                    }
+
+                    try{
+                        sh "docker -H ${env.DEV_DOCKER_SERVER_SECONDARY_URL} rm ${env.NAME}"
+                    }
+                    catch(Exception ex){
+                        echo "Error encountered on container verification for ${env.NAME}. Container '${env.NAME}' might not exists yet or has been removed."
+                    }
+
+                    sh "docker -H ${env.DEV_DOCKER_SERVER_SECONDARY_URL} run -d --restart=always --name ${env.NAME} -p ${env.PORT}:${env.EXPOSED_PORT} ${env.DOCKER_NETWORK} ${env.DOCKER_VOL} ${env.DOCKER_ENV} ${DOCKER_IMAGE_NAME}"
+                    currentBuild.result = 'SUCCESS'
+                }
+                
+                updateGitlabCommitStatus(name: 'deploy', state: 'success')
+            }
+        }
+        stage('Post Deployment'){
+            steps{
+                script{
+                    if(currentBuild.result == 'SUCCESS'){
+                        updateGitlabCommitStatus(name: 'build', state: 'success')
+                        updateGitlabCommitStatus(name: 'push', state: 'success')
+                        updateGitlabCommitStatus(name: 'deploy', state: 'success')
+						updateGitlabCommitStatus(name: 'test', state: 'success')
+                    }
+                    else {
+                        updateGitlabCommitStatus(name: 'build', state: 'failed')
+                        updateGitlabCommitStatus(name: 'push', state: 'failed')
+                        updateGitlabCommitStatus(name: 'deploy', state: 'failed')
+						updateGitlabCommitStatus(name: 'test', state: 'failed')
+                    }
+                }
+            }
+        }
+    }
+}

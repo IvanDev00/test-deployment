@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:60409",
+      "sslPort": 44378
+    }
+  },
+  "profiles": {
+    "riskwatch.api.search": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "swagger",
+      "applicationUrl": "https://localhost:7132;http://localhost:5076",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "XML_COMMENTS_PATH": "Common/Docs/Fea/publickey.xml",
+        "KEYCLOAK_URL": "https://dev.ppspepp.com/auth/realms/Development",
+        "MYSQL_CONNECTION_STRING": "server=127.0.01;port=3306;persistsecurityinfo=True;database=riskwatch_dev_admin;username=root;password=Password_root;SslMode=none;AllowPublicKeyRetrieval=true;",
+        "REDIS_CONNECTION_STRING": " REDIS CONNECTION STRING  ",
+        "ELK_Con": "http://localhost:9200",
+        "ELASTIC_SEARCH_DEFAULT_INDEX": "riskwatch-search-v5",
+        "USERNAME_ELK": "elastic",
+        "PASSWORD_ELK": "admin"
+      }
+    },
+    "IIS Express": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "launchUrl": "swagger",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+ 
+}

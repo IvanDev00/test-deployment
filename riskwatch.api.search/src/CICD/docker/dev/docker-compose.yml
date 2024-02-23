@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  riskwatch.api.search:
+    image: riskwatch.api.search:latest
+    container_name: riskwatch.api.search
+    ports:
+      - "8081:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Redis=172.17.0.4:6379
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - KEYCLOAK_URL=https://dev.ppspepp.com/auth/realms/Development
+    volumes:
+      - "D:/Desktop/Projects/api-boilerplate/src/riskwatch.api.search/Common/Docs/Fea/publickey.xml:/app/Common/Docs/Fea/publickey.xml"
+    restart: unless-stopped
